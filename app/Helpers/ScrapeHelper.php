@@ -419,6 +419,7 @@ class ScrapeHelper {
     private function cleanTextName($name) {
         $name = preg_replace('/[^A-Za-z]+/', '', $name);
         $name = trim($name);
+        $name = strtolower($name);
 
         return $name;
     }
