@@ -1,0 +1,10 @@
+
+jupyter notebook
+
+
+php artisan serve --host='localhost' --port='80'
+
+
+
+
+conda create --name tensorflow-env python=3.9 pip tensorflow

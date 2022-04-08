@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}" />
-        <title>CompiScraperPHP</title>
+        <title>scraper.studio</title>
         <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
         <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
         <style>
@@ -18,6 +18,10 @@
             thead {
                 background:#27303f;
                 padding: 1px;
+            }
+            .table-responsive {
+                overflow-y: auto;
+                height: 650px;
             }
             .tr {
                 padding: 1px;
@@ -63,7 +67,8 @@
 
             <div class="max-w-6xl mx-auto sm:px-6 lg:px-8" style="width: 90%;">
                 <h1 class="flex justify-center pt-8 sm:justify-start sm:pt-0">
-                    CompiScraperPHP
+                    <img src="favicon.ico" id="logo" \>
+                    <span id="title">scraper.studio</span>
                 </h1>
 
                 <div class="mt-8 bg-white dark:bg-gray-800 overflow-hidden shadow sm:rounded-lg">
@@ -145,7 +150,7 @@ https://beaute-pacifique.com/dk/produkt/skincare-wonders/
                                             </tbody>
                                         </table>
                                     </div>
-                                    <i style="font-size:x-small; color:gray;">Product URL requests are cached 1 day.</i>
+                                    <i style="font-size:x-small; color:gray;">Product URL requests are cached 7 days.</i>
                                 </div>
                             </div>
                         </div>
@@ -156,7 +161,7 @@ https://beaute-pacifique.com/dk/produkt/skincare-wonders/
                     <div class="text-center text-sm text-gray-500 sm:text-left">
                         <div class="flex items-center">
                             <button id="clear_cache_button">
-                                <i class="fa-solid fa-dumpster-fire"></i> Clear Cache
+                                <i class="fa-solid fa-dumpster-fire"></i> Clear server cache
                             </button>
                         </div>
                     </div>

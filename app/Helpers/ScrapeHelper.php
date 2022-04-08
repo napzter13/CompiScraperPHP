@@ -1,6 +1,7 @@
 <?php
 namespace App\Helpers;
 
+use App\Models\Constants;
 use App\Models\ScrapeData;
 use DOMDocument;
 use DOMXPath;
@@ -10,14 +11,22 @@ use GuzzleHttp\TransferStats;
 
 class ScrapeHelper {
 
+
+    public function __construct(
+        protected Constants $constants ) {
+    }
+
+
     public function getUrlsByName($name) {
-        return \cache()->remember('getUrlsByName' . $name, now()->addDay(), function () use ($name) {
+        $name = trim($name);
+        return \cache()->remember('getUrlsByName' . $name, now()->addWeek(), function () use ($name) {
 
             $client = new Client;
 
             // Pricerunner.dk
 
             $urls = [];
+            $product_names = [];
             $errors = [];
 
             $response = $client->get('https://www.pricerunner.dk/results?q=' . $name . '&suggestionsActive=false&suggestionClicked=false&suggestionReverted=false', [
@@ -38,6 +47,16 @@ class ScrapeHelper {
                 if (strpos($url, "/pl/") !== false) {
                     $url = 'https://www.pricerunner.dk' . $url;
                     array_push($pricerunner_urls, $url);
+
+                    // Get Product Name
+                    $productName = $dom->saveHTML($node);
+                    $startsAt = strpos($productName, "<h3");
+                    $startsAt2 = strpos($productName, ">", $startsAt);
+                    $productName = substr($productName, $startsAt2 + 1);
+                    $endsAt = strpos($productName, "</h3>");
+                    $productName = substr($productName, 0, $endsAt);
+                    array_push($product_names, $productName);
+                    //
                 }
             }
 
@@ -65,6 +84,7 @@ class ScrapeHelper {
             return [
                 'success' => true,
                 'urls' => $urls,
+                'product_names' => $product_names,
                 'errors' => $errors,
             ];
         });
@@ -72,7 +92,9 @@ class ScrapeHelper {
     }
 
     public function getData($url) {
-        return \cache()->remember('getData' . $url, now()->addDay(), function () use ($url) {
+        $url = trim($url);
+
+        return \cache()->remember('getData' . $url, now()->addWeek(), function () use ($url) {
 
             $client = new Client;
             $response = null;
@@ -80,16 +102,17 @@ class ScrapeHelper {
 
             try {
                 $response = $client->get($url, [
+                    'timeout' => 10,
+                    'connect_timeout' => 10,
                     'on_stats' => function (TransferStats $stats) use (&$url_real) {
                         $url_real = $stats->getEffectiveUri();
                     }
-                ])->getBody()->getContents();
+                ]);
+                $response = $response->getBody()->getContents();
             } catch (ClientException $e) {
-                $response = $e->getResponse();
-                $responseBodyAsString = $response->getBody()->getContents();
                 return [
                     'success' => false,
-                    'message' => $responseBodyAsString,
+                    'message' => 'ClientException: ' . $url_real,
                 ];
             }
 
@@ -99,13 +122,12 @@ class ScrapeHelper {
             $error = $this->checkResponseError($response, $url);
             if ($error != 'ok') return $error;
 
+
             //// Init
             $dom = new DOMDocument();
             @$dom->loadHTML($response);
             $dom->preserveWhiteSpace = false;
             $finder = new DomXPath($dom);
-
-
 
             //// Get names
             $names = [];
@@ -166,11 +188,104 @@ class ScrapeHelper {
                 \cache()->put('getData' . $url_real, $object, now()->addDay());
             }
 
+
+
+            $html = $response;
+            $html = trim($response);
+            $html = preg_replace("/[\r\n]*/","", $html);
+            $html = preg_replace('!\s+!', ' ', $html);
+            $html = strtolower($html);
+            // $html = preg_replace("/[\s]*,[\s]*/",",", $html);
+            // info(parse_url($url_real)['host'] . ',  ' . $html);
+
+
+
+
+
+            //// Get Tokens Training
+            if (count($prices) == 1) {
+                $tokens = $this->tokenizeResponse($dom, $object);
+                $labels_dev_data = implode(' ', $tokens['labels']);
+                if (!is_file('train_labels.txt') || strpos(file_get_contents("train_labels.txt"), $labels_dev_data) !== 0) {
+                    $fp = fopen('train_labels.txt', 'a');
+                    fwrite($fp, $labels_dev_data . PHP_EOL);
+                    $fp = fopen('train_text.txt', 'a');
+                    fwrite($fp, implode(' ', $tokens['text']) . PHP_EOL);
+                }
+            }
+
+
             return $object;
 
         });
 
     }
+
+    // <meta itemprop="price" content="1119.00">
+    private function tokenizeResponse($dom, $object) {
+        $text_dev = [];
+        $labels_dev = [];
+
+        array_push($text_dev, $this->cleanTextName($object['data']['domain']));
+        array_push($labels_dev, 'DOMAIN');
+
+        foreach ($dom->getElementsByTagName('*') as $node) {
+            array_push($text_dev, $this->cleanTextName($node->tagName) . 'start');
+            array_push($labels_dev, 'TAG_start');
+            foreach ($node->attributes as $attr) {
+                array_push($text_dev, $this->cleanTextName($attr->localName));
+                array_push($labels_dev, 'ATTR_name');
+                foreach (explode(' ', $attr->nodeValue) as $attrr) {
+                    if (strlen($attrr) > 1) {
+                        array_push($text_dev, $this->cleanTextName($attrr));
+                        array_push($labels_dev, 'ATTR_value');
+                    }
+                }
+
+                preg_match('!\d+\.*\d*\,*\d*!', $attr->nodeValue, $matches);
+                foreach ($matches as $match) {
+                    $val = $this->cleanPrice($match);
+                    array_push($text_dev, 'attrnumberstart');
+                    array_push($labels_dev, 'SPECIAL');
+                    array_push($text_dev, $val);
+                    if ($val == $object['data']['prices'][0]) {
+                        array_push($labels_dev, 'PRICE');
+                    } else {
+                        array_push($labels_dev, 'O');
+                    }
+                    array_push($text_dev, 'attrnumberend');
+                    array_push($labels_dev, 'SPECIAL');
+                }
+            }
+
+            array_push($text_dev, $this->cleanTextName($node->tagName) . 'end');
+            array_push($labels_dev, 'TAG_end');
+
+            preg_match('!\d+\.*\d*\,*\d*!', $node->nodeValue, $matches);
+            foreach ($matches as $match) {
+                $val = $this->cleanPrice($match);
+                array_push($text_dev, 'numberstart');
+                array_push($labels_dev, 'SPECIAL');
+                array_push($text_dev, $val);
+                if ($val == $object['data']['prices'][0]) {
+                    array_push($labels_dev, 'PRICE');
+                } else {
+                    array_push($labels_dev, 'O');
+                }
+                array_push($text_dev, 'numberend');
+                array_push($labels_dev, 'SPECIAL');
+            }
+
+            array_push($text_dev, 'elementend');
+            array_push($labels_dev, 'SPECIAL');
+        }
+
+        return [
+            'text' => $text_dev,
+            'labels' => $labels_dev,
+        ];
+    }
+
 
     private function checkResponseError($response, $var) {
         // if ( ! $response->ok()) {
@@ -295,10 +410,17 @@ class ScrapeHelper {
         $price = str_replace('.', '', $price);
         $price = str_replace(',', '.', $price);
         $price = (float) $price;
-        $price = number_format($price, 2, ',', '.');
+        $price = number_format($price, 0, ',', '');
         $price = trim($price);
 
         return $price;
+    }
+
+    private function cleanTextName($name) {
+        $name = preg_replace('/[^A-Za-z]+/', '', $name);
+        $name = trim($name);
+
+        return $name;
     }
 
 }

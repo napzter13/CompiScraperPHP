@@ -1,4 +1,3 @@
-
 $.ajaxSetup({
     headers: {
         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -27,9 +26,14 @@ window.addEventListener("DOMContentLoaded", () => {
     });
 
     $("#clear_cache_button").click(function() {
+        updateLogoStatus('up');
         $.ajax({
             type: "GET",
             url: "../clearCache",
+            error: function (request, status, error) {
+                toastError(error);
+                updateLogoStatus('down');
+            },
         }).done(function(data) {
             if (data == 1) {
                 Toastify({
@@ -48,6 +52,7 @@ window.addEventListener("DOMContentLoaded", () => {
             } else {
                 toastError();
             }
+            updateLogoStatus('down');
         });
     });
     $("#getDataByProduct #goButton").click(function() {
@@ -99,6 +104,7 @@ function getDataByUrls(urls) {
 
     urls.forEach(url => {
         if (url.includes('http')) {
+            updateLogoStatus('up');
             $.ajax({
                 type: "POST",
                 url: "../getDataByUrl",
@@ -106,14 +112,24 @@ function getDataByUrls(urls) {
                 data: {
                     'urls': url
                 },
+                error: function (request, status, error) {
+                    $('#results').append('<tr><td colspan="4" style="color:darkred;">' + error + ': ' + url + '</td></tr>');
+                    loaded += 1;
+                    $('#resultsLoaded').html(loaded);
+                    updateLogoStatus('down');
+                },
             }).done(function(data) {
                 data.forEach(dat => {
                     if (dat['success'] == true) {
+                        var names_s = '';
                         var prices_s = '';
+                        Object.values(dat.data.names).forEach(name => {
+                            names_s += name + '<br>';
+                        });
                         Object.values(dat.data.prices).forEach(price => {
                             prices_s += price + '<br>';
                         });
-                        $('#results').append('<tr><td>' + dat.data.domain + '</td><td>' + dat.data.names.join('<br>') + '</td><td style="text-align:right;">' + prices_s + '</td></tr>');
+                        $('#results').append('<tr><td>' + dat.data.domain + '</td><td>' + names_s + '</td><td style="text-align:right;">' + prices_s + '</td></tr>');
                         $('#getDataByUrl #values').val($('#getDataByUrl #values').val().replaceAll(url, dat.data.url));
                     } else {
                         $('#results').append('<tr><td colspan="4" style="color:darkred;">' + dat.message + '</td></tr>');
@@ -123,7 +139,9 @@ function getDataByUrls(urls) {
                     $("tr:odd").css({
                         "background-color":"#1b202c",
                         "color":"rgb(163 170 182);"});
+                    $('.table-responsive').animate({ scrollTop: 99999 }, 1000);
                 });
+                updateLogoStatus('down');
             });
 
             total += 1;
@@ -139,6 +157,7 @@ function getUrlsByProduct(names) {
 
     names.forEach(name => {
         if (name.length > 2) {
+            updateLogoStatus('up');
             $.ajax({
                 type: "POST",
                 url: "../getUrlsByProduct",
@@ -146,19 +165,46 @@ function getUrlsByProduct(names) {
                 data: {
                     'names': name
                 },
+                error: function (request, status, error) {
+                    toastError(error);
+                    updateLogoStatus('down');
+                },
             }).done(function(data) {
                 data = data[0];
                 if (data['success'] == true) {
                     Object.values(data.urls).forEach(url => {
                         $('#getDataByUrl #values').val($('#getDataByUrl #values').val() + url + '\n');
                     });
-                    updateCountGetDataByUrl();
+                    $('#getDataByProduct #values').val($('#getDataByProduct #values').val().replaceAll(name + '\\r', ''));
+                    data.product_names.forEach(product_name => {
+                        $('#getDataByProduct #values').val($('#getDataByProduct #values').val() + product_name + '\n');
+                    });
+                    updateCountGetDataByProduct();
                 } else {
                     toastError(data.message);
                 }
+                updateLogoStatus('down');
             });
         }
     });
+}
+
+var jobsRunning = 0;
+function updateLogoStatus(direction = null) {
+    if (direction == 'up') {
+        jobsRunning += 1;
+    } else if (direction == 'down') {
+        jobsRunning -= 1;
+    }
+    if (jobsRunning > 0) {
+        $('h1').css('opacity', '0.5');
+        $('title').html('scraper.studio [*' + jobsRunning + ']');
+        $('#title').html('scraper.studio [*' + jobsRunning + ']');
+    } else {
+        $('h1').css('opacity', '0.9');
+        $('title').html('scraper.studio [ready]');
+        $('#title').html('scraper.studio [ready]');
+    }
 }
 
 function toastError(message = '') {
