@@ -221,7 +221,6 @@ class ScrapeHelper {
 
     }
 
-    // <meta itemprop="price" content="1119.00">
     private function tokenizeResponse($dom, $object) {
         $text_dev = [];
         $labels_dev = [];
@@ -251,7 +250,7 @@ class ScrapeHelper {
                     if ($val == $object['data']['prices'][0]) {
                         array_push($labels_dev, 'PRICE');
                     } else {
-                        array_push($labels_dev, 'O');
+                        array_push($labels_dev, 'NUMBER');
                     }
                     array_push($text_dev, 'attrnumberend');
                     array_push($labels_dev, 'SPECIAL');
@@ -270,7 +269,7 @@ class ScrapeHelper {
                 if ($val == $object['data']['prices'][0]) {
                     array_push($labels_dev, 'PRICE');
                 } else {
-                    array_push($labels_dev, 'O');
+                    array_push($labels_dev, 'NUMBER');
                 }
                 array_push($text_dev, 'numberend');
                 array_push($labels_dev, 'SPECIAL');
