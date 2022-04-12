@@ -3,6 +3,7 @@ namespace App\Helpers;
 
 use App\Models\Constants;
 use App\Models\ScrapeData;
+use App\Models\TokenizerModel;
 use DOMDocument;
 use DOMXPath;
 use GuzzleHttp\Client;
@@ -204,13 +205,13 @@ class ScrapeHelper {
 
             //// Get Tokens Training
             if (count($prices) == 1) {
-                $tokens = $this->tokenizeResponse($dom, $object);
-                $labels_dev_data = implode(' ', $tokens['labels']);
-                if (!is_file('train_labels.txt') || strpos(file_get_contents("train_labels.txt"), $labels_dev_data) !== 0) {
-                    $fp = fopen('train_labels.txt', 'a');
-                    fwrite($fp, $labels_dev_data . PHP_EOL);
-                    $fp = fopen('train_text.txt', 'a');
-                    fwrite($fp, implode(' ', $tokens['text']) . PHP_EOL);
+                $data = $this->tokenizeResponse($dom, $object);
+                foreach ($data as $dat) {
+                    $streng = $dat->getString();
+                    if (!is_file('train_text.txt') || strpos(file_get_contents("train_text.txt"), $streng) !== 0) {
+                        $fp = fopen('train_text.txt', 'a');
+                        fwrite($fp, $streng . PHP_EOL);
+                    }
                 }
             }
 
@@ -222,67 +223,96 @@ class ScrapeHelper {
     }
 
     private function tokenizeResponse($dom, $object) {
-        $text_dev = [];
-        $labels_dev = [];
-
-        array_push($text_dev, $this->cleanTextName($object['data']['domain']));
-        array_push($labels_dev, 'DOMAIN');
+        $data = [];
 
         foreach ($dom->getElementsByTagName('*') as $node) {
-            array_push($text_dev, $this->cleanTextName($node->tagName) . 'start');
-            array_push($labels_dev, 'TAG_start');
+
+            $model = new TokenizerModel();
+            $model->domain = $object['data']['domain'];
+            $model->tag_0 = $node->tagName;
+            $model = $this->tokenizeResponse_getTagParents($node, $model);
+
+            $a = 0;
             foreach ($node->attributes as $attr) {
-                array_push($text_dev, $this->cleanTextName($attr->localName));
-                array_push($labels_dev, 'ATTR_name');
-                foreach (explode(' ', $attr->nodeValue) as $attrr) {
-                    if (strlen($attrr) > 1) {
-                        array_push($text_dev, $this->cleanTextName($attrr));
-                        array_push($labels_dev, 'ATTR_value');
-                    }
-                }
+                if ($a > 2) break;
+                $model->{'tag_0_attr_'.$a.'_name'} = $attr->localName;
+                $model->{'tag_0_attr_'.$a.'_value'} = $this->cleanTextName($attr->nodeValue);
+                $a++;
+            }
+
+            $a = 0;
+            foreach ($node->attributes as $attr) {
+                if ($a > 2) break;
 
                 preg_match('!\d+\.*\d*\,*\d*!', $attr->nodeValue, $matches);
                 foreach ($matches as $match) {
-                    $val = $this->cleanPrice($match);
-                    array_push($text_dev, 'attrnumberstart');
-                    array_push($labels_dev, 'SPECIAL');
-                    array_push($text_dev, $val);
-                    if ($val == $object['data']['prices'][0]) {
-                        array_push($labels_dev, 'PRICE');
+                    $number = $this->cleanPrice($match);
+                    $value = clone($model);
+                    $value->value_source = 'attr';
+                    $value->value = $number;
+
+                    if ($number == $object['data']['prices'][0]) {
+                        $value->is_target = 1;
                     } else {
-                        array_push($labels_dev, 'NUMBER');
+                        $value->is_target = 0;
                     }
-                    array_push($text_dev, 'attrnumberend');
-                    array_push($labels_dev, 'SPECIAL');
+
+                    array_push($data, $value);
                 }
-            }
 
-            array_push($text_dev, $this->cleanTextName($node->tagName) . 'end');
-            array_push($labels_dev, 'TAG_end');
+                preg_match('!\d+\.*\d*\,*\d*!', $node->nodeValue, $matches);
+                foreach ($matches as $match) {
+                    $number = $this->cleanPrice($match);
+                    $value = clone($model);
+                    $value->value_source = 'text';
+                    $value->value = $number;
 
-            preg_match('!\d+\.*\d*\,*\d*!', $node->nodeValue, $matches);
-            foreach ($matches as $match) {
-                $val = $this->cleanPrice($match);
-                array_push($text_dev, 'numberstart');
-                array_push($labels_dev, 'SPECIAL');
-                array_push($text_dev, $val);
-                if ($val == $object['data']['prices'][0]) {
-                    array_push($labels_dev, 'PRICE');
-                } else {
-                    array_push($labels_dev, 'NUMBER');
+                    if ($number == $object['data']['prices'][0]) {
+                        $value->is_target = 1;
+                    } else {
+                        $value->is_target = 0;
+                    }
+
+                    array_push($data, $value);
                 }
-                array_push($text_dev, 'numberend');
-                array_push($labels_dev, 'SPECIAL');
-            }
 
-            array_push($text_dev, 'elementend');
-            array_push($labels_dev, 'SPECIAL');
+                $a++;
+            }
         }
 
-        return [
-            'text' => $text_dev,
-            'labels' => $labels_dev,
-        ];
+        return $data;
+    }
+
+    private function tokenizeResponse_getTagParents($node, $model) {
+        $parent = $node->parentNode;    // tag_1
+        if (!is_null($parent) && $parent->childNodes->length) {
+            $model->tag_1 = $parent->childNodes[0]->nodeName;
+            if (!is_null($parent->attributes)) {
+                $a = 0;
+                foreach ($parent->attributes as $attr) {
+                    if ($a > 2) break;
+                    $model->{'tag_1_attr_'.$a.'_name'} = $attr->localName;
+                    $model->{'tag_1_attr_'.$a.'_value'} = $this->cleanTextName($attr->nodeValue);
+                    $a++;
+                }
+            }
+
+            $parent = $parent->parentNode;    // tag_2
+            if (!is_null($parent) && $parent->childNodes->length) {
+                $model->tag_2 = $parent->childNodes[0]->nodeName;
+                if (!is_null($parent->attributes)) {
+                    $a = 0;
+                    foreach ($parent->attributes as $attr) {
+                        if ($a > 2) break;
+                        $model->{'tag_2_attr_'.$a.'_name'} = $attr->localName;
+                        $model->{'tag_2_attr_'.$a.'_value'} = $this->cleanTextName($attr->nodeValue);
+                        $a++;
+                    }
+                }
+            }
+        }
+
+        return $model;
     }
 
 
@@ -409,7 +439,7 @@ class ScrapeHelper {
         $price = str_replace('.', '', $price);
         $price = str_replace(',', '.', $price);
         $price = (float) $price;
-        $price = number_format($price, 0, ',', '');
+        $price = number_format($price, 2, '.', '');
         $price = trim($price);
 
         return $price;
