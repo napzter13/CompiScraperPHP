@@ -206,12 +206,11 @@ class ScrapeHelper {
             //// Get Tokens Training
             if (count($prices) == 1) {
                 $data = $this->tokenizeResponse($dom, $object);
+                info(TokenizerModel::generateHeaderString($data));
                 foreach ($data as $dat) {
                     $streng = $dat->getString();
-                    if (!is_file('train_text.txt') || strpos(file_get_contents("train_text.txt"), $streng) !== 0) {
-                        $fp = fopen('train_text.txt', 'a');
-                        fwrite($fp, $streng . PHP_EOL);
-                    }
+                    $fp = fopen('train_text_v2.csv', 'a');
+                    fwrite($fp, $streng . PHP_EOL);
                 }
             }
 
@@ -232,12 +231,11 @@ class ScrapeHelper {
             $model->tag_0 = $node->tagName;
             $model = $this->tokenizeResponse_getTagParents($node, $model);
 
-            $a = 0;
             foreach ($node->attributes as $attr) {
-                if ($a > 2) break;
-                $model->{'tag_0_attr_'.$a.'_name'} = $attr->localName;
-                $model->{'tag_0_attr_'.$a.'_value'} = $this->cleanTextName($attr->nodeValue);
-                $a++;
+                $model->tag_0_attributes[$attr->localName] = [];
+                foreach (explode(' ', $node->nodeValue) as $value) {
+                    array_push($model->tag_0_attributes[$attr->localName], $this->cleanTextName($value));
+                }
             }
 
             $a = 0;
@@ -288,12 +286,11 @@ class ScrapeHelper {
         if (!is_null($parent) && $parent->childNodes->length) {
             $model->tag_1 = $parent->childNodes[0]->nodeName;
             if (!is_null($parent->attributes)) {
-                $a = 0;
                 foreach ($parent->attributes as $attr) {
-                    if ($a > 2) break;
-                    $model->{'tag_1_attr_'.$a.'_name'} = $attr->localName;
-                    $model->{'tag_1_attr_'.$a.'_value'} = $this->cleanTextName($attr->nodeValue);
-                    $a++;
+                    $model->tag_1_attributes[$attr->localName] = [];
+                    foreach (explode(' ', $node->nodeValue) as $value) {
+                        array_push($model->tag_1_attributes[$attr->localName], $this->cleanTextName($value));
+                    }
                 }
             }
 
@@ -301,12 +298,11 @@ class ScrapeHelper {
             if (!is_null($parent) && $parent->childNodes->length) {
                 $model->tag_2 = $parent->childNodes[0]->nodeName;
                 if (!is_null($parent->attributes)) {
-                    $a = 0;
                     foreach ($parent->attributes as $attr) {
-                        if ($a > 2) break;
-                        $model->{'tag_2_attr_'.$a.'_name'} = $attr->localName;
-                        $model->{'tag_2_attr_'.$a.'_value'} = $this->cleanTextName($attr->nodeValue);
-                        $a++;
+                        $model->tag_2_attributes[$attr->localName] = [];
+                        foreach (explode(' ', $node->nodeValue) as $value) {
+                            array_push($model->tag_2_attributes[$attr->localName], $this->cleanTextName($value));
+                        }
                     }
                 }
             }
